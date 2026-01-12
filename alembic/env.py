@@ -20,6 +20,11 @@ if config.config_file_name is not None:
 # target_metadata = mymodel.Base.metadata
 from app.db.database import Base
 from app.models import user
+from app.models.patient import Patient
+from app.models.healthcare_facility import HealthcareFacility
+from app.models.healthcare_worker import HealthcareWorker
+from app.models.consent import Consent
+from app.models.access_log import AccessLog
 
 target_metadata = Base.metadata
 # other values from the config, defined by the needs of env.py,
