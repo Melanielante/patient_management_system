@@ -3,12 +3,13 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from app.services.consent_service import ConsentService
 from app.models.healthcare_worker import HealthcareWorker
-
+from app.services.access_log_service import AccessLogService
 from app.db.session import get_db
 from app.models.patient import Patient
 from app.models.user import User
 from app.middleware.dependency import require_role
 from app.services.registry_service import RegistryService
+from fastapi import Request
 
 router = APIRouter(prefix="/patients", tags=["patients"])
 
@@ -17,8 +18,8 @@ class PatientRegisterRequest(BaseModel):
     national_id: str
 
 
-@router.get("/me")
-def get_my_patient_profile(
+@router.get("/me/access-logs")
+def get_my_access_logs(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("patient"))
 ):
@@ -29,12 +30,21 @@ def get_my_patient_profile(
     if not patient:
         raise HTTPException(status_code=404, detail="Patient profile not found")
 
-    return patient
+    logs = (
+        db.query(AccessLog)
+        .filter(AccessLog.patient_id == patient.patient_id)
+        .order_by(AccessLog.timestamp.desc())
+        .all()
+    )
+
+    return logs
+
 
 
 @router.get("/{patient_id}")
 def get_patient_by_id(
     patient_id: str,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("healthcare_worker"))
 ):
@@ -53,6 +63,17 @@ def get_patient_by_id(
     )
 
     if not has_consent:
+        AccessLogService.log(
+            db,
+            patient_id=patient_id,
+            accessed_by=worker.worker_id,
+            facility_id=worker.facility_id,
+            action="view",
+            result="denied",
+            reason="No active consent",
+            ip_address=request.client.host
+        )
+
         raise HTTPException(
             status_code=403,
             detail="No valid consent to access patient data"
@@ -62,10 +83,18 @@ def get_patient_by_id(
         Patient.patient_id == patient_id
     ).first()
 
-    if not patient:
-        raise HTTPException(status_code=404, detail="Patient not found")
+    AccessLogService.log(
+        db,
+        patient_id=patient_id,
+        accessed_by=worker.worker_id,
+        facility_id=worker.facility_id,
+        action="view",
+        result="allowed",
+        ip_address=request.client.host
+    )
 
     return patient
+
 
 
 @router.post("/register")

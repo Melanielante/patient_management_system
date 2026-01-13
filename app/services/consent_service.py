@@ -28,6 +28,7 @@ class ConsentService:
                 Consent.status == "active",
                 Consent.revoked_at.is_(None),
             )
+            .order_by(Consent.granted_at.desc())
             .first()
         )
 
